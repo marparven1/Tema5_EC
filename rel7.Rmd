@@ -24,12 +24,220 @@ knitr::opts_chunk$set(echo = TRUE)
 
 Escribir las instrucciones R sin y con la librería boot.
 
+## Parte 1 (Contraste Bootstrap unilateral)
+
+```{r}
+x<-c(137.9, 143, 143.2, 140, 140.2, 139.3, 141.4, 140.1, 142, 137.2, 139.5, 142.7, 141.3)
+y<-c(141.6, 138.9, 140, 141.9, 140.5, 138.6, 141.5, 141.5, 140.7, 141.5, 140.4, 142,141)
+nx<-length(x)
+ny<-length(y) 
+boxplot(x,y,col=c("blue","red"))
+```
+
+
+
+```{r}
+xy<-c(x,y)
+nxy<-length(xy)
+```
+
+
+```{r}
+B<-1999
+set.seed(125)
+T0<-sd(x)/sd(y)
+T0
+```
+
+
+```{r}
+Tast<-numeric(B) 
+for (b in 1:B)
+  Tast[b]<-sd(sample(xy,nx,replace=TRUE))/sd(sample(xy,ny,replace=TRUE))
+
+hist(Tast,br=30,col="lightblue",prob=TRUE, 
+     main=paste(B,"muestras bootstrap"),
+     xlab="T*",ylab="")
+abline(v=T0, lwd=4,col="red")
+```
+
+
+```{r}
+cat("p valor bootstrap unilateral (>) = ",(sum(Tast>=T0)+1)/(B+1),"\n")
+# Tast>=T0 Cuántas veces el estimador T asterisco es mayor que T0
+```
+
+Es menor que 0.05, por lo que rechazo $H_0$
+
+## Paso 2 (bilateral)
+
+
+Como tenemos cantidades positivas mayores que uno, es una buena opción para 
+aplicar logaritmo.
+
+```{r}
+#Para un contraste bilateral se puede trabajar con log(sd(x)/sd(y))
+hist(log(Tast),br=30,col="lightblue",
+     prob=TRUE, main=paste(B,"muestras bootstrap"),
+     xlab="log(T*)",ylab="")
+abline(v=log(T0), lwd=4,col="red")
+cat("p valor bootstrap unilateral (>) = ",(sum(log(Tast)>=log(T0))+1)/(B+1),"\n")
+abline(v=-log(T0), lwd=4,col="red")
+```
+
+
+```{r}
+cat("p valor bootstrap bilateral = ", 
+    (sum(abs(log(Tast))>=abs(log(T0)))+1)/(B+1),"\n")
+```
+
+
+Acepto $H_0$
+
+## Parte 3 (Con la librería boot)
+
+```{r}
+library(boot) 
+cocboot=function(xy,indi,nx) {
+  sd(xy[indi[1:nx]])/sd(xy[indi[-c(1:nx)]]) 
+  }
+resulboot=boot(xy,cocboot,nx=nx,R=1999) 
+hist(resulboot$t,br=30,col="lightblue",prob=TRUE,
+     main=paste(B,"muestras bootstrap"),
+     xlab="T*",ylab="") 
+abline(v=resulboot$t0, lwd=4,col="red")
+```
+
+
+```{r}
+cat("p valor bootstrap unilateral (>) = ",
+    (sum(resulboot$t>=resulboot$t0)+1)/(B+1),"\n")
+```
+
+P-valor muy pequeño, rechazo $H_0$
+
+```{r}
+T0
+```
+
+```{r}
+resulboot$t0
+```
+
+
+```{r}
+summary(Tast)
+```
+
+
+
+```{r}
+summary(resulboot$t)
+```
+
+
+```{r}
+cat("p valor bootstrap bilateral = ", (sum(abs(log(resulboot$t))>=abs(log(resulboot$t0)))+1)/(B+1),"\n")
+```
+
+
 # Ejercicio 2
 
 2. Realizar mediante procedimientos bootstrap el contraste de hipótesis unilateral relativo a la posibilidad de que la primera componente principal del fichero iris de R explique más del 70% de la varianza total. Hacerlo directamente y con la ayuda de **boot**.
 
+## ACP
 
-# Ejercicio 3
+```{r}
+#Porcentaje de varianza explicada por la primera C.P. 
+##?Puede aceptarse que es superior al 70%? 
+
+##H0:PE1<=70; H1:PE1>70
+set.seed(357)
+data(iris) #?iris
+```
+
+
+```{r}
+ACP<- princomp(iris[,-5],cor=T)
+summary(ACP)
+```
+
+
+```{r}
+ACP$loadings
+```
+
+
+```{r}
+varcp<- ACP$sdev^2 
+sum(varcp)
+```
+
+
+```{r}
+PE1_0<- 100*varcp[1]/sum(varcp) 
+dife0<- PE1_0-70
+n<-nrow(iris)
+indices<- 1:n
+```
+
+
+```{r}
+B<- 4999
+difeBoot<- numeric(B)
+for (i in 1:B)
+  { if (i%%500==0) cat("Muestra bootstrap ",i,"\n")
+  ACPBoot<- princomp(iris[sample(indices,rep=T),-5],cor=T) 
+  varcpboot<- ACPBoot$sdev^2
+  PE1Boot<- 100*varcpboot[1]/sum(varcpboot)
+  difeBoot[i]<- PE1Boot-PE1_0 
+  }
+```
+
+## Histograma y p-valor
+
+```{r}
+hist(difeBoot,br=30, # 30 intervalos
+     col="lightblue",prob=TRUE, 
+    main=paste(B,"muestras bootstrap"),
+    xlab="PE1*-PE1",ylab="")
+abline(v=dife0, lwd=4,col="red")
+```
+
+
+
+```{r}
+cat("p valor bootstrap unilateral (>) = ", 
+     (sum(difeBoot>=dife0)+1)/(B+1),"\n")
+```
+
+
+```{r}
+#EJERCICIO: Con boot
+library(boot) 
+calculoPE1boot=function(datos,indi) {
+  ACPBoot<- princomp(iris[indi,-5],cor=T) 
+  varcpboot<- ACPBoot$sdv^2
+  PE1<- 100*varcpboot[1]/sum(varcpboot)
+  PE1 
+  }
+resulboot=boot(iris,calculoPE1boot,R=4999)
+```
+
+
+```{r}
+hist(resulboot$t-resulboot$t0, # hacemos la diferencia a la hora de representar
+     br=30,col="lightblue",prob=TRUE, 
+     main=paste(B,"muestras bootstrap (boot)"), xlab="PE1*-PE1",ylab="")
+abline(v=resulboot$t0-70, lwd=4,col="red")
+```
+
+
+
+
+
+# Ejercicio 3 IC bootstrap para un cociente
+
 3. Las siguientes instrucciones permiten definir dos variables en R que contienen las medidas de la corrosión (y) en 13 aleaciones de níquel-cobre, cada una de ellas con un contenido de hierro x. Es de interés el cambio en la corrosión cuando aumenta el nivel de hierro, comparado con la pérdida de corrosión cuando no hay hierro: $\beta_1 / \beta_0$ en el modelo de regresión lineal.
 
 Calcular intervalos de confianza bootstrap para dicho cociente.
@@ -47,6 +255,86 @@ Se sabe que un estimador de la varianza de $\beta_1 / \beta_0$ mediante el méto
 
 La función utilizada para calcular el estadístico de interés debe incluir también esta estimación de su varianza, para usarla en el método bootstrap-t.
 
+
+
+```{r}
+x<- c(0.01,0.48,0.71,0.95,1.19,0.01,0.48,1.44,0.71,1.96,0.01,1.44,1.96)
+y<- c(127.6,124,110.8,103.9,101.5,130.01,122,92.3,113.1,83.7,128,91.4,86.2)
+cor(x,y)
+```
+
+
+
+```{r}
+plot(x,y,xlab="HIERRO",ylab="CORROSION",main="") 
+regrelin<- lm(y~x)
+summary(regrelin)
+abline(regrelin,col="red",lwd=2)
+```
+
+```{r}
+coefici<- coef(regrelin) 
+print(T0<- coefici[2]/coefici[1])
+```
+
+
+```{r}
+alfa<-0.05
+xydat<- data.frame(x,y)
+library(boot)
+#Para bootstrap de pares 
+#
+calcuT<-function(xydat,indi){
+  regre<-lm(y~x,data=xydat[indi,])
+  coefi<- regre$coefficients
+  T<-coefi[2]/coefi[1]
+  V<-vcov(regre) #cov(beta0,beta1)
+  auxi<- (V[1,1]/(coefi[1]^2)) + (V[2,2]/(coefi[2]^2))- 
+    2*V[1,2]/(coefi[1]*coefi[2])
+  varT<- (T^2) * auxi #var(T), método delta para bootstrap stud (t) 
+  c(T,varT)
+}
+Tbootpares<-boot(xydat,calcuT,1000) #Datos, estadístico, B
+```
+
+```{r}
+hist(Tbootpares$t[,1],br=30,main="Bootstrap de pares", col="red",xlab="T*")
+```
+```{r}
+boot.ci(Tbootpares, conf=1-alfa, type=c("norm","perc","stud","bca"), 
+        var.t = Tbootpares$t[,2]) # a boot.ci le paso lo que me ha devuelto 
+# la función boot
+```
+
+
+
+```{r}
+#Bootstrap de residuos
+calcuTres<-function(xydat,indi)
+  { xydat$y<- predict(regrelin)+residuals(regrelin)[indi]
+  regre<-lm(y~x,data=xydat) 
+  coefi<- regre$coefficients 
+  T<-coefi[2]/coefi[1] 
+  V<-vcov(regre)
+  auxi<- (V[1,1]/(coefi[1]^2)) + (V[2,2]/(coefi[2]^2))-
+    2*V[1,2]/(coefi[1]*coefi[2])
+  varT<- (T^2) * auxi #var(T), m?todo delta para bootstrap stud (t) c(T,varT)
+}
+Tbootresi<-boot(xydat,calcuTres,1000)
+```
+
+
+```{r}
+hist(Tbootresi$t[,1],br=30,main="Bootstrap de residuos", col="red",xlab="T*")
+```
+
+
+```{r}
+boot.ci(Tbootresi, conf=1-alfa, type=c("norm","perc","stud","bca"), 
+        var.t = Tbootresi$t[,2])
+```
+
+
 # Ejercicio 4
 4. El fichero “salmon.dat” contiene datos anuales sobre una población de salmones. Las variables que aparecen son: R = “recruits” número de salmones que entran, y S = “spawners” número de salmones que están poniendo huevos, que mueren en cuanto lo hacen. Para que la población se estabilice se requiere: R = S (en otro caso, o hay demasiados salmones para los mismos recursos, o bien no se repone la población).
 Se desea calcular un I.C. bootstrap para el punto donde R = S, trabajando con el modelo de Beverton-
@@ -61,14 +349,392 @@ Holt:
 6. Estimar el sesgo de la razón (cociente de las medias de las variables x y u) en el fichero “city” de R mediante el bootstrap balanceado (fichero disponible en la librería “boot”):
 a. Escribiendo directamente las instrucciones. b. Empleando la librería boot.
 
-# Ejercicio 7
+\newpage
+
+# Ejercicio 7 Estimar el error de clasificación
 7. Estimar el error de clasificación para el modelo de análisis discriminante lineal sobre los datos “cats” de la librería MASS.
+
+```{r}
+library(MASS)
+data(cats)
+summary(cats)
+```
+
+
+Vamos a aplicar análisis discriminante lineal.
+
+
+```{r}
+#?cats
+colores<- c("red","blue")
+plot(cats[,2:3],type="n",main="Datos Cats")
+text(cats[,2:3],as.character(cats$Sex),
+          col=colores[cats$Sex],cex=0.6)
+
+grid()
+```
+Hemos podido discriminar y ver a que categoría pertenecen, no va  a ser un modelo perfecto y vamos a cometer errores probablemente.
+
+
+Para obtener los datos del modelo discriminante (función lda)
+
+```{r}
+cats.lda<-lda(Sex~.,cats)
+cats.lda
+```
+
+
+En LD1 está la línea que separa a las categorías.
+
+```{r}
+table(cats$Sex,predict(cats.lda)$class)
+# g_{lambda}(li)=predict(cats.lda)$class
+```
+
+Se tiene que: 
+
+- Aciertos: Diagonal
+- Errores: diagonal opuesta
+
+
+
+```{r}
+erroremp<- mean(cats$Sex!=predict(cats.lda)$class)
+# Número de unos / número total de observaciones
+cat("Error empírico=",100*erroremp ,"% \n")
+# Error empírico ó error de entrenamiento
+```
+
+```{r}
+#lda admite CV=TRUE que implementa n-VC (calcula el error esperado del modelo)
+##o sea, Jackknife 
+cats.ldaJ<-lda(Sex~.,cats,CV=TRUE)
+str(cats.ldaJ)
+```
+
+Vamos a calcular el error de predicción:
+
+
+```{r}
+table(cats$Sex,cats.ldaJ$class)
+```
+
+```{r}
+errorJ<- mean(cats$Sex!=cats.ldaJ$class)
+cat("Error Jackknife=",100*errorJ ,"% \n")
+```
+
+
+```{r}
+#Cómo se generan muestras bootstrap de conjuntos #de datos. Por ejemplo 
+datos=cats[c(1:5,140:144),]
+datos
+```
+
+Vamos a crear muestras bootstrap
+
+```{r}
+#Estimaciones Bootstrap:
+########################
+B<- 2000 # Construyo 2000 muestras bootstrap
+errorboot<-numeric(B) 
+errorOOB<- numeric(B) 
+n<- nrow(cats) 
+indin<- 1:n
+for (b in 1:B)
+{
+if (b%%500==0) 
+  cat("Muestra bootstrap número ",b,"\n") #Generar muestra bootstrap de los indices
+indiB<- sample(indin,rep=T) # muestra de entrenamiento
+# los datos que no esten en la muestra de entrenamiento serán los datost
+#Obtener los ?ndices no incluidos en imuestrab 
+indiOOB<-setdiff(indin,indiB) # La diferencias (los que no han salido)
+  #Construir modelo lda sobre la muestra bootstrap
+cats.lda.boot<-lda(Sex~.,cats[indiB,])
+#Calcular tasa de error en la muestra original
+errorboot[b]<- mean(cats$Sex!=predict(cats.lda.boot,cats)$class)  # error
+#Obtener predicciones OOB
+prediOOB<- predict(cats.lda.boot,cats[indiOOB,])$class # predicciones sobre las observaciones no elegidas
+#Calcular la tasa de error OOB
+errorOOB[b]<- mean(cats$Sex[indiOOB]!=prediOOB)
+}
+```
+
+
+
+```{r}
+errorB<- mean(errorboot) #no recomendable
+errorB
+```
+
+
+```{r}
+errorOOB<- mean(errorOOB) # media de todos los errores, ligera variante de Err_b^{1}
+errorOOB
+```
+
+
+```{r}
+error632B<-0.368*erroremp+0.632*errorOOB # Estimación del error bootstrap
+error632B
+```
+
+```{r}
+#Calcular cada elemento Lij #directamente:
+matrizL<- matrix(NA,n,n)
+  for (i in 1:n)
+    for (j in 1:n)
+      matrizL[i,j]<- (cats[i,]$Sex!=predict(cats.lda,cats[j,])$class)
+print(Noinf<- mean(matrizL))
+```
+
+
+
+```{r}
+#O bien, en un problema de clasificación, #con error 0-1,
+# Noinf se puede calcular #de forma más eficiente:
+p1<- mean(cats$Sex=="M")
+q1<- mean(predict(cats.lda)$class=="M") 
+p1*(1-q1)+(1-p1)*q1
+```
+
+
+
+```{r}
+Noinf
+```
+
+
+```{r}
+erroremp
+```
+
+```{r}
+errorOOB=min(errorOOB,Noinf) 
+errorOOB
+```
+
+
+```{r}
+#Cálculo de tsr y w
+(tsr<- (errorOOB-erroremp)/(Noinf-erroremp))
+```
+
+
+```{r}
+(w<- 0.632/(1-0.368*tsr))
+```
+
+
+```{r}
+ #Posible redefinición de tsr
+if ( (errorOOB<= erroremp) | (Noinf <=erroremp) ) # en alguno de estos casos sedará la correción
+  tsr=0 
+tsr
+```
+
+
+```{r}
+#(error632masB<-(1-w)*erroremp+w*errorOOB)
+# #Definición general (la línea anterior no vale #si se redefinen tsr o errorOOB)
+error632masB=error632B+
+(errorOOB-erroremp)*(0.368*0.632*tsr)/(1-0.368*tsr) 
+error632masB
+```
+
+
+```{r}
+op_ant = options(digits=4)
+cat(" Error Empírico=\t",100*erroremp ,"% \n",
+"Error Jackknife=\t",100*errorJ ,"% \n",
+"Error OOB=\t\t", 100*errorOOB,"% \n",
+"Error 0.632Boot=\t", 100*error632B,"% \n",
+"Error 0.632+Boot=\t", 100*error632masB,"% \n")
+```
+
+
+```{r}
+options(op_ant)
+```
+
+\newpage
+
 
 
 
 # Ejercicio 8
 8. Estimar el error de predicción para los datos “Renta.txt”, siendo “rentsqm” (precio del alquiler por m2) la variable dependiente de un modelo de regresión lineal. Utilizar el criterio RECM.
 
+## Parte 1 Leer datos
+
+ESTIMACION DEL ERROR DE PREDICCION (REGRESION)
+
+```{r}
+#1. Leer los datos
+datos<-read.table("datos/Renta.txt",header=T) 
+dim(datos)
+```
+
+
+```{r}
+summary(datos)
+```
+
+
+## Parte 2 (Modelo de regresión lineal múltiple)
+
+```{r}
+modelo=lm(rentsqm~.,data=datos) 
+#Calcular MSE y RMSE empírico 
+error_emp=mean(residuals(modelo)^2) 
+RMSE_emp=sqrt(error_emp)
+```
+
+
+
+
+## Parte 3 (Estimaciones Jackknife y bootsrap)
+
+
+
+
+```{r}
+#3.1. Jackknife
+#Se pueden calcular con cv.lm
+#o bien recorriendo los n modelos #cada uno se construye dejando fuera 
+##el caso i, donde se aplica el 
+###modelo para calcular prediJ[i] 
+n=nrow(datos)
+prediJ = numeric(n)
+```
+
+```{r}
+for(i in 1:n){
+modelo.i = lm(rentsqm~.,data=datos[-i,]) 
+prediJ[i]<-predict(modelo.i,datos[i,])
+}
+resi_J=datos$rentsqm - prediJ 
+RMSE_J<-sqrt( mean(resi_J^2) )
+```
+
+
+
+## Parte 4 (generamos las muestras bootstrap)
+
+```{r}
+#3.2. Bootstrap:
+#Se pueden calcular los estimadores de ECM (MSE) 
+# y al final visualizar su raíz cuadrada
+
+B<-2000
+errorboot<-numeric(B)
+errorOOB<- numeric(B)
+indin<-1:n
+
+for(b in 1:B){
+if (b%%500==0) cat("Muestra bootstrap número ",b,"\n")
+#Generar muestra bootstrap de los índices
+indiB<- sample(indin,rep=T)
+#Obtener los índices no incluidos en imuestrab
+indiOOB<-setdiff(indin,indiB)
+#Construir modelo lda sobre la muestra bootstrap
+modelo.boot<-lm(rentsqm~.,data=datos[indiB,])
+#Calcular ECM en la muestra original
+suppressWarnings({ errorboot[b]<- mean((datos$rentsqm[indiB]-predict(modelo.boot,datos))^2)})
+ #Obtener predicciones OOB
+suppressWarnings({ prediOOB<- predict(modelo.boot,datos[indiOOB,]) })
+#Calcular ECM OOB
+errorOOB[b]<- mean((datos$rentsqm[indiOOB]-prediOOB)^2)
+}
+```
+
+
+Y los errores:
+
+```{r}
+errorB<- mean(errorboot)
+errorOOB<- mean(errorOOB) 
+error632B<-0.368*error_emp+0.632*errorOOB
+```
+
+
+
+
+
+```{r}
+#Calcular cada elemento L_ij
+#Al no ser un problema de clasificación, #se debe calcular directamente: 
+matrizL<- matrix(NA,n,n)
+for (i in 1:n)
+for (j in 1:n)
+matrizL[i,j]<- (datos$rentsqm[i]-predict(modelo,datos[j,]))^2 #error cuad.
+print(Noinf<- mean(matrizL))
+```
+
+
+
+
+```{r}
+#Redefinición de errorOOB 
+##(por si hiciera falta) 
+errorOOB #Noinf< error_emp ?
+```
+
+
+```{r}
+Noinf
+```
+
+
+```{r}
+errorOOB=min(errorOOB,Noinf) 
+errorOOB
+```
+
+
+```{r}
+ #Cálculo de tsr y w
+(tsr<- (errorOOB-error_emp)/(Noinf-error_emp))
+```
+
+
+```{r}
+(w<- 0.632/(1-0.368*tsr))
+```
+
+
+
+
+
+
+
+```{r}
+#Posible redefinición de tsr
+if ( (errorOOB<= error_emp) | (Noinf <= error_emp) ) 
+tsr=0 
+tsr
+```
+
+
+
+
+```{r}
+#(error632masB<-(1-w)*erroremp+w*errorOOB) #Definición general (la línea anterior no vale #si se redefinen tsr o errorOOB) 
+
+error632masB=error632B+
+(errorOOB-error_emp)*(0.368*0.632*tsr)/(1-0.368*tsr)
+error632masB
+```
+
+
+
+```{r}
+cat(" RMSE Empírico=\t",sqrt(RMSE_emp), "\n",
+" RMSE Jackknife=\t", RMSE_J, "\n",
+" RMSE OOB=\t\t", sqrt(errorOOB),"\n",
+" RMSE 0.632Boot=\t", sqrt(error632B),"\n",
+" RMSE 0.632+Boot=\t", sqrt(error632masB),"\n")
+```
 
 
 

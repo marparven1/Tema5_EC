@@ -179,10 +179,7 @@ PE1_0<- 100*varcp[1]/sum(varcp)
 dife0<- PE1_0-70
 n<-nrow(iris)
 indices<- 1:n
-```
 
-
-```{r}
 B<- 4999
 difeBoot<- numeric(B)
 for (i in 1:B)
@@ -211,13 +208,13 @@ cat("p valor bootstrap unilateral (>) = ",
      (sum(difeBoot>=dife0)+1)/(B+1),"\n")
 ```
 
+## Con librería BOOT
 
 ```{r}
-#EJERCICIO: Con boot
 library(boot) 
 calculoPE1boot=function(datos,indi) {
   ACPBoot<- princomp(iris[indi,-5],cor=T) 
-  varcpboot<- ACPBoot$sdv^2
+  varcpboot<- ACPBoot$sdev^2
   PE1<- 100*varcpboot[1]/sum(varcpboot)
   PE1 
   }
@@ -227,8 +224,11 @@ resulboot=boot(iris,calculoPE1boot,R=4999)
 
 ```{r}
 hist(resulboot$t-resulboot$t0, # hacemos la diferencia a la hora de representar
-     br=30,col="lightblue",prob=TRUE, 
-     main=paste(B,"muestras bootstrap (boot)"), xlab="PE1*-PE1",ylab="")
+     br=30,
+     col="lightblue",
+     prob=TRUE, 
+     main=paste(B,"muestras bootstrap (boot)"),
+     xlab="PE1*-PE1",ylab="")
 abline(v=resulboot$t0-70, lwd=4,col="red")
 ```
 
@@ -283,8 +283,9 @@ alfa<-0.05
 xydat<- data.frame(x,y)
 library(boot)
 #Para bootstrap de pares 
-#
-calcuT<-function(xydat,indi){
+
+calcuT<-function(xydat,indi)
+  {
   regre<-lm(y~x,data=xydat[indi,])
   coefi<- regre$coefficients
   T<-coefi[2]/coefi[1]
@@ -294,10 +295,9 @@ calcuT<-function(xydat,indi){
   varT<- (T^2) * auxi #var(T), método delta para bootstrap stud (t) 
   c(T,varT)
 }
-Tbootpares<-boot(xydat,calcuT,1000) #Datos, estadístico, B
-```
 
-```{r}
+Tbootpares<-boot(xydat,calcuT,1000) #Datos, estadístico, B
+
 hist(Tbootpares$t[,1],br=30,main="Bootstrap de pares", col="red",xlab="T*")
 ```
 ```{r}
@@ -320,6 +320,10 @@ calcuTres<-function(xydat,indi)
     2*V[1,2]/(coefi[1]*coefi[2])
   varT<- (T^2) * auxi #var(T), m?todo delta para bootstrap stud (t) c(T,varT)
 }
+```
+
+
+```{r}
 Tbootresi<-boot(xydat,calcuTres,1000)
 ```
 
@@ -330,8 +334,10 @@ hist(Tbootresi$t[,1],br=30,main="Bootstrap de residuos", col="red",xlab="T*")
 
 
 ```{r}
-boot.ci(Tbootresi, conf=1-alfa, type=c("norm","perc","stud","bca"), 
-        var.t = Tbootresi$t[,2])
+#boot.ci(Tbootresi, 
+#        conf=1-alfa,
+#        type=c("norm","perc","stud","bca"), 
+#        var.t = Tbootresi$t[,2])
 ```
 
 

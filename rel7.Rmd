@@ -11,6 +11,8 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyverse)
 ```
 
 # Ejercicio 1
@@ -341,23 +343,538 @@ hist(Tbootresi$t[,1],br=30,main="Bootstrap de residuos", col="red",xlab="T*")
 ```
 
 
-# Ejercicio 4
-4. El fichero “salmon.dat” contiene datos anuales sobre una población de salmones. Las variables que aparecen son: R = “recruits” número de salmones que entran, y S = “spawners” número de salmones que están poniendo huevos, que mueren en cuanto lo hacen. Para que la población se estabilice se requiere: R = S (en otro caso, o hay demasiados salmones para los mismos recursos, o bien no se repone la población).
-Se desea calcular un I.C. bootstrap para el punto donde R = S, trabajando con el modelo de Beverton-
-Holt:
+
+
+
+
+
+
+
+
+
+
+# Ejercicio 4 IC bootstrap (Modelo Beverton-Holt)
+4. El fichero “salmon.dat” contiene datos anuales sobre una población de salmones. 
+
+Las variables que aparecen son: 
+
+- R = “recruits” número de salmones que entran
+- S = “spawners” número de salmones que están poniendo huevos, que mueren en cuanto lo hacen. 
+
+Para que la población se estabilice se requiere: R = S (en otro caso, o hay demasiados salmones para los mismos recursos, o bien no se repone la población).
+
+
+Se desea calcular un I.C. bootstrap para el punto donde R = S, trabajando con el modelo de Beverton-Holt:
+
 \[R = \dfrac{1}{\beta_0 + \beta_1/s}\]
 
-# Ejercicio 5
-5. Diseñar un estudio empírico para analizar la efectividad de la transformación Z de Fisher en el cálculo de intervalos de confianza para el coeficiente de correlación lineal poblacional. Por ejemplo, generar 100 muestras de tamaño 10 de una Normal bivariante de media 0, desviaciones típicas 1 y correlación 0.6 y calcular los I.C. al 95% con los métodos Percentil, Normal y BCa. Comparar los cubrimientos y las longitudes medias utilizando procedimientos numéricos y gráficos.
-1
 
-# Ejercicio 6
+
+```{r}
+#Se desea calcular un I.C. para el punto donde R=S
+
+salmon<- read.table("datos/salmon.dat",header=T) #acceso a los datos salmon
+salmon %>% head()
+```
+
+```{r}
+attach(salmon) 
+plot(R,S,main="Datos salmon") # Dibujamos la nube de puntos
+
+regre1<- lm(S~R) # Modelo de regresión lineal
+summary(regre1) 
+abline(regre1,col="red")
+```
+
+Vemos que el ajuste no es malo, $R^2$= 0.89. Retenemos casi un 90% de la variabilidad total del experimento.
+
+```{r}
+plot(1/R,1/S,main="Datos salmón. Transformac. inversa")
+```
+```{r}
+rt<- 1/R
+st<- 1/S
+regre2<- lm(st~rt) #Modelo de Beverton-Holt 
+summary(regre2)
+```
+
+Vemos que para el modelo inverso, el $R^2$ es mucho más alto. Casi un 99%.
+
+La correlación:
+
+```{r}
+cor(R,1/predict(regre2))^2
+```
+
+Muy alta.
+
+```{r}
+plot(R,S,main="Datos Salmon. Modelo de Beverton-Holt") 
+points(R,1/predict(regre2),col="red")
+#Punto de estabilizac., resolviendo en el modelo 1/R=prediccion(R)
+coefi<- coef(regre2)
+Restab0<-(1-coefi[2])/coefi[1]
+c(Restab0,1/predict(regre2,data.frame(rt=1/Restab0)))
+
+points(Restab0,Restab0,col="green",lwd=8) 
+#lines(Restab,Restab,lty=2,type="h",col="grey") Equivale a la siguiente 
+segments(x0=Restab0, y0=0, x1 = Restab0, y1 = Restab0,lty=2,col="grey") 
+segments(0, Restab0, Restab0, Restab0,lty=2,col="grey")
+grid()
+```
+
+
+Intervalo de confianza bootstrap:
+
+
+
+```{r}
+# Bootstrap
+alfa=0.05 
+
+calcuRestabpares<-function(xydat,indi)
+{coefi<- lsfit(xydat[indi,1],xydat[indi,2])$coefficients 
+  (1-coefi[2])/coefi[1]
+}
+
+library(boot)
+xydat<- data.frame(rt,st)
+##bootstrap de pares
+bootpares<-boot(xydat,calcuRestabpares,2000) #Datos, estadístico, B 
+Restabastepares<-c(bootpares$t) #Lo de c() para que no sea matriz
+hist(Restabastepares,br=30,main="R establizac., B. pares", col="red")
+```
+
+```{r}
+ICbootpares<- boot.ci(bootpares, conf=1-alfa, t=Restabastepares,t0=Restab0,
+                      type=c("norm","perc","bca"))
+```
+
+
+```{r}
+##Bootstrap de residuos
+calcuRestabresid<-function(xydat,indi) {
+  coefi<-lsfit(xydat[,1], predict(regre2)+(residuals(regre2)[indi]))$coefficients
+  (1-coefi[2])/coefi[1] 
+}
+
+bootresi<-boot(xydat,calcuRestabresid,2000) 
+Restabasteresid<-c(bootresi$t)
+```
+
+
+```{r}
+hist(Restabasteresid,br=30,main="R establizac., B. residuos", col="red")
+```
+Por último, el IC bootstrap
+
+```{r}
+ICbootresid<- boot.ci(bootresi, 
+                      conf=1-alfa, 
+                      t=Restabasteresid,
+                      t0=Restab0,
+                      type=c("norm","perc","bca"))
+ICbootresid
+```
+
+
+```{r}
+ICbootpares
+```
+
+
+
+```{r}
+#Estimac. corrigiendo el sesgo y estimac. de la varianza
+sesgoB<- mean(Restabasteresid)-Restab0 
+Rcorreg<-Restab0-sesgoB 
+sd(Restabasteresid)
+```
+
+
+
+```{r}
+#IC normal
+c(Rcorreg-qnorm(1-alfa/2)*sd(Restabasteresid), 
+  Rcorreg+qnorm(1-alfa/2)*sd(Restabasteresid))
+```
+
+
+# Ejercicio 5
+5. Diseñar un estudio empírico para analizar la efectividad de la transformación Z de Fisher en el cálculo de intervalos de confianza para el coeficiente de correlación lineal poblacional. 
+
+Por ejemplo, generar 100 muestras de tamaño 10 de una Normal bivariante de media 0, desviaciones típicas 1 y correlación 0.6 y calcular los I.C. al 95% con los métodos Percentil, Normal y BCa. Comparar los cubrimientos y las longitudes medias utilizando procedimientos numéricos y gráficos.
+
+
+
+```{r}
+#5. Estudio la efectividad de la transformac. Z de Fisher
+library(MASS) #para mvrnorm library(boot)
+z.transform <- function(r) {.5*log((1+r)/(1-r))} 
+z.inversa <- function(z) (exp(2*z)-1)/(exp(2*z)+1) 
+
+cor.fun <- function(datos,i1,i2, indices) {
+  x <- datos[indices,i1]
+  y <- datos[indices,i2]
+  cor(x, y)
+  } #r directamente
+
+zcor.fun <- function(datos,i1,i2, indices) {
+  x <- datos[indices,i1]
+  y <- datos[indices,i2]
+z.transform(cor(x, y))
+} #Con transf. Z de Fisher
+```
+
+
+```{r}
+set.seed(13579)
+M<- 100 #número de muestras, en la práctica se tomaría M=10000 
+n<-10 #tamaño muestral
+pho<- 0.6
+correl<- numeric(M)
+Zcor<- numeric(M) 
+InterPerc<- matrix(NA,M,2) 
+InterNorm<- matrix(NA,M,2) 
+InterBca<- matrix(NA,M,2) 
+InterPercZ<- matrix(NA,M,2)
+InterNormZ<- matrix(NA,M,2) 
+InterBcaZ<- matrix(NA,M,2)
+
+for (i in 1:M)
+  { if (i%%10==0) cat("Muestra ",i,"\n")
+xy<-data.frame(mvrnorm(n, c(0,0), matrix(c(1,pho,pho,1),2,2)))
+correl[i]<- cor(xy)[1,2]
+xy.boot1 <- boot(xy, cor.fun, i1=1,i2=2, R=999)
+xy.boot2 <- boot(xy, zcor.fun,i1=1,i2=2, R=999) 
+InterPercZ[i,]<-z.inversa(boot.ci(xy.boot2, type="perc")$percent[4:5])
+InterNormZ[i,]<-z.inversa(boot.ci(xy.boot2, type="norm")$normal[2:3]) 
+InterBcaZ[i,]<-z.inversa(boot.ci(xy.boot2, type="bca")$bca[4:5]) 
+InterPerc[i,]<-boot.ci(xy.boot1, type="perc")$percent[4:5] 
+InterNorm[i,]<-boot.ci(xy.boot2, type="norm")$normal[2:3]
+InterBca[i,]<-boot.ci(xy.boot2, type="bca")$bca[4:5]
+}
+```
+
+
+```{r}
+Zcorrel<-z.transform(correl)
+```
+
+
+```{r}
+hist(correl,br=20,
+main=paste(M,"muestras. Coeficiente de correlac."),col="lightblue")
+```
+```{r}
+hist(Zcorrel,
+     br=20,
+     main=paste(M,"muestras. Transf. Z del Coeficiente de correlac."), 
+     cex.main=0.8,col="lightblue")
+```
+```{r}
+#Como se sabe que r toma valores en [-1,1]:
+corrige<- function(x) {
+if (x[1]< -1)  x[1]= -1 
+if (x[2]> 1) x[2]= 1
+x
+} 
+InterPercZ<-t(apply(InterPercZ,1,corrige)) 
+InterNormZ<-t(apply(InterNormZ,1,corrige))
+InterBcaZ<-t(apply(InterBcaZ,1,corrige)) 
+InterPerc<-t(apply(InterPerc,1,corrige)) 
+InterNorm<-t(apply(InterNorm,1,corrige)) 
+InterBca<-t(apply(InterBca,1,corrige))
+```
+
+
+```{r}
+#Función para calcular la cobertura y
+#la longitud de un conjunto de intervalos 
+rendimiento<- function(x,pho){
+  cubri<-mean(apply(x,1,cubre<-function(a) { pho<=a[2] && pho>= a[1]} ))*100 
+  longi<-mean(x[,2]-x[,1])
+  c(cubri,longi)
+  } 
+Resultados<-matrix(c(rendimiento(InterPerc,pho),
+                     rendimiento(InterNorm,pho),
+                     rendimiento(InterBca,pho), 
+                     rendimiento(InterPercZ,pho), 
+                     rendimiento(InterNormZ,pho), 
+                     rendimiento(InterBcaZ,pho)),byrow=T,6,2)
+
+colnames(Resultados)<- c("Cubrimiento","Long.Media")
+rownames(Resultados)<- c("Percentil","Normal","Bca", "PercentilZ","NormalZ","BcaZ")
+Resultados
+```
+
+```{r}
+plot(Resultados,type="n",
+     main="Resultados del experimento",xlim=c(90,96))
+text(Resultados,labels=rownames(Resultados), col=c(rep("blue",3),rep("red",3)))
+grid()
+```
+
+
+
+```{r}
+#Longitudes de los intervalos, y diferencias #según se aplique o no la transf.Z 
+longiPerc<- InterPerc[,2]-InterPerc[,1]
+longiPercZ<- InterPercZ[,2]-InterPercZ[,1] 
+difePerc<- longiPerc-longiPercZ
+longiNorm<- InterNorm[,2]-InterNorm[,1]
+longiNormZ<- InterNormZ[,2]-InterNormZ[,1]
+difeNorm<- longiNorm-longiNormZ
+longiBca<- InterBca[,2]-InterBca[,1]
+longiBcaZ<- InterBcaZ[,2]-InterBcaZ[,1] 
+difeBca<- longiBca-longiBcaZ 
+boxplot(difePerc,difeNorm,difeBca)
+```
+
+## Contrastes
+
+Para cada una de las M muestras se han aplicado diversos métodos.
+
+### Muestras relacionadas
+
+Las posibles comparaciones corresponden a muestras relacionadas
+
+```{r}
+t.test(difePerc)
+```
+
+```{r}
+t.test(difeNorm)
+```
+
+```{r}
+t.test(difeBca)
+```
+
+
+Para comparar las proporciones: 
+
+Aquí habría que aplicar Test de Mcnemar por el mismo motivo de muestras relacionadas
+
+```{r}
+#Primero se construyen tablas cruzando la cobertura (T/F) de cada método
+CubPerc=apply(InterPerc,1,cubre<-function(a) { pho<=a[2] && pho>= a[1]} )
+CubPercZ=apply(InterPercZ,1,cubre<-function(a) { pho<=a[2] && pho>= a[1]} )
+CubNorm=apply(InterNorm,1,cubre<-function(a) { pho<=a[2] && pho>= a[1]} )
+CubNormZ=apply(InterNormZ,1,cubre<-function(a) { pho<=a[2] && pho>= a[1]} )
+CubBca=apply(InterBca,1,cubre<-function(a) { pho<=a[2] && pho>= a[1]} ) 
+CubBcaZ=apply(InterBcaZ,1,cubre<-function(a) { pho<=a[2] && pho>= a[1]} )
+```
+
+
+```{r}
+( TablaPerc=table(CubPerc,CubPercZ) )
+```
+
+
+
+```{r}
+mcnemar.test(TablaPerc)
+```
+Aceptamos la hipótesis nula.
+
+```{r}
+#H0:P[T/No Z]=P[T/Z]
+( TablaNorm=table(CubNorm,CubNormZ) )
+```
+
+```{r}
+mcnemar.test(TablaNorm)
+```
+
+
+Volvemos a aceptar
+
+
+```{r}
+( TablaBca=table(CubBca,CubBcaZ) )
+```
+
+
+```{r}
+mcnemar.test(TablaBca)
+```
+
+Para esta tabla acepto de nuevo.
+
+### Muestras independientes
+
+Nota: Si las muestras fueran distintas para los diferentes métodos, muestras independientes:
+
+```{r}
+prop.test(Resultados[c(1,4),1], c(M,M))
+```
+
+
+```{r}
+prop.test(Resultados[c(2,5),1], c(M,M))
+```
+```{r}
+prop.test(Resultados[c(3,6),1], c(M,M))
+```
+
+
+
+
+
+```{r}
+#En este caso, si hay avisos, #usar el test exacto de Fisher
+totales<- Resultados[,1]*M/100
+mcnemar.test(matrix(c(totales[1], 
+                      M-totales[1],
+                      totales[4],
+                      M-totales[4]),
+                    byrow=T,ncol=2))
+```
+
+
+```{r}
+fisher.test(matrix(c(totales[1],
+                     M-totales[1],
+                     totales[4],
+                     M-totales[4]), 
+                   byrow=T,ncol=2),alternative="greater")
+```
+
+
+```{r}
+fisher.test(matrix(c(totales[2], M-totales[2],totales[5],M-totales[5]), 
+                   byrow=T,ncol=2),alternative="greater")
+```
+
+
+```{r}
+fisher.test(matrix(c(totales[3], M-totales[3],totales[5],M-totales[5]), 
+                   byrow=T,ncol=2),alternative="greater")
+```
+
+
+## Gráficas de los IC
+
+### Percentil
+```{r}
+#Dibujo de los I.C. Percentil
+plot(InterPerc[,1],ylim=c(-1,1),type="l",
+main="IC-Bootstrap (Percentil)",col="red",xlab="Muestra", ylab="")
+lines(InterPerc[,2],col="red") 
+lines(InterPercZ[,1],col="blue",lty=2) 
+lines(InterPercZ[,2],col="blue",lty=2)
+legend("bottomright",col=c("red","blue"), lty=1:2, 
+       legend=c("Sin transf. Z","Con transf. Z de Fisher"))
+abline(h=pho,lwd=2) 
+abline(h=1,lty=2);abline(h=-1,lty=2); grid()
+```
+
+
+
+### Normal
+```{r}
+#Dibujo de los I.C. Normal
+plot(InterNorm[,1],ylim=c(-1,1),type="l", main="IC-Bootstrap (Normal)",
+     col="red",xlab="Muestra", ylab="") 
+lines(InterNorm[,2],col="red") 
+lines(InterNormZ[,1],col="blue",lty=2)
+lines(InterNormZ[,2],col="blue",lty=2)
+legend("bottomright",col=c("red","blue"), lty=1:2, legend=c("Sin transf. Z","Con transf. Z de Fisher")) 
+abline(h=pho,lwd=2)
+abline(h=1,lty=2);abline(h=-1,lty=2); grid()
+```
+
+
+### BCa
+
+```{r}
+#Dibujo de los I.C. BCa
+plot(InterBca[,1],ylim=c(-1,1),type="l", main="IC-Bootstrap (BCa)",
+     col="red",xlab="Muestra", ylab="")
+lines(InterBca[,2],col="red") 
+lines(InterBcaZ[,1],col="blue",lty=2)
+lines(InterBcaZ[,2],col="blue",lty=2) 
+legend("bottomright",col=c("red","blue"), lty=1:2,
+       legend=c("Sin transf. Z","Con transf. Z de Fisher")) 
+abline(h=pho,lwd=2) 
+abline(h=1,lty=2);abline(h=-1,lty=2); grid()
+```
+
+
+Los basados en la transformac., en generaltienen menor longitud, y el extremo superior es <1.
+
+# Ejercicio 6 Sesgo de la razón (de medias) Bootstrap balanceado
+
 6. Estimar el sesgo de la razón (cociente de las medias de las variables x y u) en el fichero “city” de R mediante el bootstrap balanceado (fichero disponible en la librería “boot”):
-a. Escribiendo directamente las instrucciones. b. Empleando la librería boot.
+
+## a. Escribiendo directamente las instrucciones.
+
+
+```{r}
+library(boot)
+data(city)
+city
+```
+
+```{r}
+# ?city
+```
+
+La razón será:
+
+```{r}
+print(R<- mean(city$x)/mean(city$u) )
+```
+
+```{r}
+B<- 999
+Raste<- numeric(B) 
+n<- nrow(city) 
+lista<- rep(1:n,B) 
+table(lista)
+```
+
+```{r}
+listaper<- matrix(sample(lista),ncol=n,byrow=TRUE)
+head(listaper)
+```
+
+
+```{r}
+tail(listaper)
+```
+
+
+```{r}
+for (b in 1:B) 
+{indiB<-listaper[b,]
+  Raste[b]<- mean(city$x[indiB])/mean(city$u[indiB])
+  }
+hist(Raste)
+```
+
+
+```{r}
+mean(Raste)-R
+```
+
+## b. Empleando la librería boot.
+
+
+```{r}
+ratio <- function(d,indi) mean(d$x[indi])/mean(d$u[indi])
+boot.bal<- boot(data=city, statistic=ratio, R = 999, sim="balanced")
+mean(boot.bal$t)-boot.bal$t0
+```
+
+El resultado es el mismo y sale más directo.
+
 
 \newpage
 
 # Ejercicio 7 Estimar el error de clasificación
+
 7. Estimar el error de clasificación para el modelo de análisis discriminante lineal sobre los datos “cats” de la librería MASS.
 
 ```{r}
@@ -425,10 +942,16 @@ Vamos a calcular el error de predicción:
 table(cats$Sex,cats.ldaJ$class)
 ```
 
+
+
+
+
 ```{r}
 errorJ<- mean(cats$Sex!=cats.ldaJ$class)
 cat("Error Jackknife=",100*errorJ ,"% \n")
 ```
+
+Generar muestras bootstrap de conjuntos de datos.
 
 
 ```{r}
@@ -436,6 +959,16 @@ cat("Error Jackknife=",100*errorJ ,"% \n")
 datos=cats[c(1:5,140:144),]
 datos
 ```
+
+
+
+```{r}
+datos[sample(1:nrow(datos),rep=TRUE),]
+```
+
+
+
+
 
 Vamos a crear muestras bootstrap
 
@@ -472,25 +1005,21 @@ errorOOB[b]<- mean(cats$Sex[indiOOB]!=prediOOB)
 errorB<- mean(errorboot) #no recomendable
 errorB
 ```
-
-
 ```{r}
-errorOOB<- mean(errorOOB) # media de todos los errores, ligera variante de Err_b^{1}
-errorOOB
+errorOOB<- mean(errorOOB) 
+error632B<-0.368*erroremp+0.632*errorOOB
 ```
 
 
-```{r}
-error632B<-0.368*erroremp+0.632*errorOOB # Estimación del error bootstrap
-error632B
-```
+
+
 
 ```{r}
 #Calcular cada elemento Lij #directamente:
-matrizL<- matrix(NA,n,n)
-  for (i in 1:n)
-    for (j in 1:n)
-      matrizL[i,j]<- (cats[i,]$Sex!=predict(cats.lda,cats[j,])$class)
+matrizL<- matrix(NA,n,n) 
+for (i in 1:n)
+for (j in 1:n)
+matrizL[i,j]<- (cats[i,]$Sex!=predict(cats.lda,cats[j,])$class)
 print(Noinf<- mean(matrizL))
 ```
 
@@ -505,6 +1034,14 @@ p1*(1-q1)+(1-p1)*q1
 ```
 
 
+```{r}
+#Redefinición de errorOOB (aquí no hace falta)
+errorOOB
+```
+
+
+
+
 
 ```{r}
 Noinf
@@ -514,6 +1051,9 @@ Noinf
 ```{r}
 erroremp
 ```
+
+
+
 
 ```{r}
 errorOOB=min(errorOOB,Noinf) 
@@ -544,7 +1084,8 @@ tsr
 #(error632masB<-(1-w)*erroremp+w*errorOOB)
 # #Definición general (la línea anterior no vale #si se redefinen tsr o errorOOB)
 error632masB=error632B+
-(errorOOB-erroremp)*(0.368*0.632*tsr)/(1-0.368*tsr) 
+  (errorOOB-erroremp)*(0.368*0.632*tsr)/(1-0.368*tsr) 
+
 error632masB
 ```
 
@@ -568,15 +1109,16 @@ options(op_ant)
 
 
 
-# Ejercicio 8
-8. Estimar el error de predicción para los datos “Renta.txt”, siendo “rentsqm” (precio del alquiler por m2) la variable dependiente de un modelo de regresión lineal. Utilizar el criterio RECM.
+# Ejercicio 8 Error de predicción (criterio RECM)
+
+8. Estimar el error de predicción para los datos “Renta.txt”, siendo “rentsqm” (precio del alquiler por m2) la variable dependiente de un modelo de regresión lineal.
+Utilizar el criterio RECM.
 
 ## Parte 1 Leer datos
 
 ESTIMACION DEL ERROR DE PREDICCION (REGRESION)
 
 ```{r}
-#1. Leer los datos
 datos<-read.table("datos/Renta.txt",header=T) 
 dim(datos)
 ```
@@ -602,23 +1144,18 @@ RMSE_emp=sqrt(error_emp)
 ## Parte 3 (Estimaciones Jackknife y bootsrap)
 
 
+### Jacknife
 
+Se pueden calcular con cv.lm o bien recorriendo los n modelos cada uno se construye dejando fuera el caso i, donde se aplica el modelo para calcular prediJ[i].
 
 ```{r}
-#3.1. Jackknife
-#Se pueden calcular con cv.lm
-#o bien recorriendo los n modelos #cada uno se construye dejando fuera 
-##el caso i, donde se aplica el 
-###modelo para calcular prediJ[i] 
 n=nrow(datos)
 prediJ = numeric(n)
-```
-
-```{r}
 for(i in 1:n){
 modelo.i = lm(rentsqm~.,data=datos[-i,]) 
 prediJ[i]<-predict(modelo.i,datos[i,])
 }
+
 resi_J=datos$rentsqm - prediJ 
 RMSE_J<-sqrt( mean(resi_J^2) )
 ```
@@ -627,11 +1164,11 @@ RMSE_J<-sqrt( mean(resi_J^2) )
 
 ## Parte 4 (generamos las muestras bootstrap)
 
-```{r}
-#3.2. Bootstrap:
-#Se pueden calcular los estimadores de ECM (MSE) 
-# y al final visualizar su raíz cuadrada
+### Bootstrap
 
+Se pueden calcular los estimadores de ECM (MSE) y al final visualizar su raíz cuadrada.
+
+```{r}
 B<-2000
 errorboot<-numeric(B)
 errorOOB<- numeric(B)
@@ -664,12 +1201,10 @@ error632B<-0.368*error_emp+0.632*errorOOB
 ```
 
 
-
+Calcular cada elemento L_ij. Al no ser un problema de clasificación, se debe calcular directamente: 
 
 
 ```{r}
-#Calcular cada elemento L_ij
-#Al no ser un problema de clasificación, #se debe calcular directamente: 
 matrizL<- matrix(NA,n,n)
 for (i in 1:n)
 for (j in 1:n)
@@ -678,11 +1213,9 @@ print(Noinf<- mean(matrizL))
 ```
 
 
-
+Redefinición de errorOOB (por si hiciera falta) 
 
 ```{r}
-#Redefinición de errorOOB 
-##(por si hiciera falta) 
 errorOOB #Noinf< error_emp ?
 ```
 
@@ -725,7 +1258,9 @@ tsr
 
 
 ```{r}
-#(error632masB<-(1-w)*erroremp+w*errorOOB) #Definición general (la línea anterior no vale #si se redefinen tsr o errorOOB) 
+#(error632masB<-(1-w)*erroremp+w*errorOOB) 
+##Definición general (la línea anterior no vale 
+###si se redefinen tsr o errorOOB) 
 
 error632masB=error632B+
 (errorOOB-error_emp)*(0.368*0.632*tsr)/(1-0.368*tsr)
@@ -741,6 +1276,15 @@ cat(" RMSE Empírico=\t",sqrt(RMSE_emp), "\n",
 " RMSE 0.632Boot=\t", sqrt(error632B),"\n",
 " RMSE 0.632+Boot=\t", sqrt(error632masB),"\n")
 ```
+
+
+
+
+
+
+
+
+
 
 
 

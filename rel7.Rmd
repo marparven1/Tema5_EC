@@ -1,7 +1,7 @@
 ---
 title: "Hoja 7 de problemas y prácticas con R"
 author: "Marta Venegas Pardo"
-subtitle: Estadística Computacional I. Grado en Estadística
+subtitle: Tema 5: Métodos estadísticos de remuestreo
 output:
   pdf_document: 
     toc: yes
@@ -15,7 +15,7 @@ library(dplyr)
 library(tidyverse)
 ```
 
-# Ejercicio 1
+# Ejercicio 1 Contraste bootstrap unilateral
 
 1. Realizar un contraste bootstrap unilateral de hipótesis para comparar las desviaciones típicas a partir de las siguientes muestras:
 
@@ -143,7 +143,7 @@ cat("p valor bootstrap bilateral = ", (sum(abs(log(resulboot$t))>=abs(log(resulb
 ```
 
 
-# Ejercicio 2
+# Ejercicio 2 Contraste de hipótesis unilateral
 
 2. Realizar mediante procedimientos bootstrap el contraste de hipótesis unilateral relativo a la posibilidad de que la primera componente principal del fichero iris de R explique más del 70% de la varianza total. Hacerlo directamente y con la ayuda de **boot**.
 
